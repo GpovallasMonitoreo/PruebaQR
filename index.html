@@ -2,27 +2,77 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Argos AR PoC</title>
+    <title>Argos AR: Astronauta Animado</title>
+    
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     
+    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
+
     <style>
-      /* Un pequeño truco para ocultar el botón de "VR" que A-Frame pone por defecto */
-      .a-enter-vr-button { display: none; }
+        body { margin: 0; }
+        .scanning-overlay {
+            position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 2; pointer-events: none;
+            color: white; font-family: monospace; font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+        }
+        /* Ocultar botón VR */
+        .a-enter-vr-button { display: none; }
     </style>
 </head>
 <body>
-    <a-scene mindar-image="imageTargetSrc: ./targets.mind;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    <div class="scanning-overlay" id="overlay">
+        [ APUNTA A LA PANTALLA ]
+    </div>
+
+    <a-scene 
+        mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001;" 
+        color-space="sRGB" 
+        renderer="colorManagement: true, physicallyCorrectLights" 
+        vr-mode-ui="enabled: false" 
+        device-orientation-permission-ui="enabled: false">
 
         <a-assets>
-            <a-asset-item id="modelo-pato" src="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb"></a-asset-item>
+            <a-asset-item id="astronauta-model" src="https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/RobotExpressive/RobotExpressive.glb"></a-asset-item>
         </a-assets>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity mindar-image-target="targetIndex: 0">
-            <a-entity gltf-model="#modelo-pato" rotation="90 0 0" position="0 0 0" scale="0.5 0.5 0.5"></a-entity>
+        <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
+            
+            <a-entity 
+                gltf-model="#astronauta-model" 
+                rotation="90 0 0" 
+                position="0 -0.5 0" 
+                scale="0.3 0.3 0.3" 
+                animation-mixer="clip: Dance; loop: repeat; timeScale: 1;">
+            </a-entity>
+            
+            <a-light type="directional" position="1 1 1" intensity="1.5"></a-light>
+            <a-light type="ambient" intensity="0.8"></a-light>
+
         </a-entity>
     </a-scene>
+
+    <script>
+        // Un pequeño script para feedback visual
+        const target = document.querySelector('#target-entity');
+        const overlay = document.querySelector('#overlay');
+
+        target.addEventListener("targetFound", event => {
+            console.log("¡Objetivo encontrado!");
+            overlay.innerHTML = "[ CONEXIÓN ESTABLECIDA ]";
+            overlay.style.color = "#00ff00"; // Verde hacker
+        });
+
+        target.addEventListener("targetLost", event => {
+            console.log("Objetivo perdido");
+            overlay.innerHTML = "[ APUNTA A LA PANTALLA ]";
+            overlay.style.color = "white";
+        });
+    </script>
 </body>
 </html>
