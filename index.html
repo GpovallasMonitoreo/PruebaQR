@@ -2,136 +2,103 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Argos AR: Interactivo</title>
-    
+    <title>Argos AR: Gran Entrada</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
 
-    <script>
-        // COMPONENTE 1: CAMBIADOR DE ANIMACIONES (AL TOCAR)
-        AFRAME.registerComponent('animation-control', {
-            init: function () {
-                const el = this.el;
-                // Lista de animaciones disponibles en el modelo "RobotExpressive"
-                const clips = ['Dance', 'Jump', 'Running', 'Wave', 'Walking', 'Death']; 
-                let clipIndex = 0;
+    <style>
+        body { margin: 0; }
+        .instructions {
+            position: absolute; bottom: 10%; width: 100%; text-align: center;
+            color: white; font-family: sans-serif; font-weight: bold; pointer-events: none; text-shadow: 2px 2px 2px #000;
+        }
+        .a-enter-vr-button { display: none; }
+    </style>
 
-                // Escuchamos el evento 'click' (que en movil es un toque)
-                el.addEventListener('click', function (evt) {
-                    clipIndex = (clipIndex + 1) % clips.length;
-                    const nextClip = clips[clipIndex];
-                    console.log("Cambiando animación a: ", nextClip);
+    <script>
+        // SCRIPT ORQUESTADOR: Coordina que todo pase cuando se detecta la imagen
+        AFRAME.registerComponent('start-show', {
+            init: function () {
+                const el = this.el; // El target
+                const robot = document.querySelector("#robot");
+                const doorL = document.querySelector("#door-left");
+                const doorR = document.querySelector("#door-right");
+                
+                // Cuando encuentra la imagen...
+                el.addEventListener('targetFound', event => {
+                    console.log("Target encontrado - Iniciando secuencia");
                     
-                    // Cambiamos el atributo de animación
-                    // crossFadeDuration hace que el cambio sea suave
-                    el.setAttribute('animation-mixer', {
-                        clip: nextClip,
-                        loop: 'repeat',
-                        crossFadeDuration: 0.4
-                    });
+                    // 1. Disparar apertura de puertas
+                    // 'emit' lanza el evento que las animaciones están esperando (startEvents)
+                    doorL.emit('open');
+                    doorR.emit('open');
+
+                    // 2. Esperar 500ms y hacer que el robot camine hacia afuera
+                    setTimeout(() => {
+                        robot.emit('walk-out');
+                    }, 500);
+                });
+
+                // Resetear si se pierde (opcional, para que se cierre de nuevo)
+                el.addEventListener('targetLost', event => {
+                    console.log("Target perdido - Reseteando");
+                    // Aquí podrías emitir eventos de 'close' si quisieras
                 });
             }
         });
-
-        // COMPONENTE 2: GESTOS (ROTAR Y ESCALAR)
-        // Esto permite usar dos dedos para hacer zoom o girar el modelo
-        AFRAME.registerComponent('gesture-handler', {
-            schema: {
-                enabled: { default: true },
-                rotationFactor: { default: 5 },
-                minScale: { default: 0.1 },
-                maxScale: { default: 8 },
-            },
-            init: function () {
-                this.handleScale = this.handleScale.bind(this);
-                this.handleRotation = this.handleRotation.bind(this);
-                this.isVisible = false;
-                this.initialScale = this.el.object3D.scale.clone();
-                this.scaleFactor = 1;
-
-                this.el.sceneEl.addEventListener("markerFound", (e) => { this.isVisible = true; });
-                this.el.sceneEl.addEventListener("markerLost", (e) => { this.isVisible = false; });
-            },
-            update: function () {
-                if (this.data.enabled) {
-                    this.el.sceneEl.addEventListener("onefingermove", this.handleRotation);
-                    this.el.sceneEl.addEventListener("twofingermove", this.handleScale);
-                } else {
-                    this.el.sceneEl.removeEventListener("onefingermove", this.handleRotation);
-                    this.el.sceneEl.removeEventListener("twofingermove", this.handleScale);
-                }
-            },
-            handleRotation: function (event) {
-                if (this.isVisible) {
-                    this.el.object3D.rotation.y += event.detail.positionChange.x * this.data.rotationFactor;
-                }
-            },
-            handleScale: function (event) {
-                if (this.isVisible) {
-                    this.scaleFactor *= (1 + event.detail.spreadChange / event.detail.startSpread);
-                    this.scaleFactor = Math.min(Math.max(this.scaleFactor, this.data.minScale), this.data.maxScale);
-                    this.el.object3D.scale.x = this.scaleFactor * this.initialScale.x;
-                    this.el.object3D.scale.y = this.scaleFactor * this.initialScale.y;
-                    this.el.object3D.scale.z = this.scaleFactor * this.initialScale.z;
-                }
-            }
-        });
     </script>
-
-    <style>
-        /* Estilos UI */
-        body { margin: 0; }
-        .instructions {
-            position: absolute; bottom: 5%; left: 0; width: 100%;
-            text-align: center; pointer-events: none; z-index: 10;
-        }
-        .btn-bg {
-            background: rgba(0, 0, 0, 0.6); color: white; 
-            padding: 10px 20px; border-radius: 20px; 
-            font-family: sans-serif; font-weight: bold;
-        }
-        .a-enter-vr-button { display: none; } /* Ocultar botón VR */
-    </style>
 </head>
-
 <body>
-    <div class="instructions">
-        <span class="btn-bg">👆 Toca al robot para cambiar acción | 🤏 Pellizca para escalar</span>
-    </div>
+    <div class="instructions">¡Mantén la cámara estable!</div>
 
     <a-scene 
         mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no;" 
         color-space="sRGB" 
         renderer="colorManagement: true, physicallyCorrectLights" 
         vr-mode-ui="enabled: false" 
-        device-orientation-permission-ui="enabled: false"
-        gesture-detector>
+        device-orientation-permission-ui="enabled: false">
 
         <a-assets>
             <a-asset-item id="robot-model" src="https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/RobotExpressive/RobotExpressive.glb"></a-asset-item>
+            <img id="metal-tex" src="https://cdn.aframe.io/a-painter/images/floor.jpg">
         </a-assets>
 
-        <a-camera position="0 0 0" look-controls="enabled: false">
-            <a-entity cursor="fuse: false; rayOrigin: mouse;" raycaster="far: 10000; objects: .clickable"></a-entity>
-        </a-camera>
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity mindar-image-target="targetIndex: 0">
-            
-            <a-entity 
-                id="robot"
-                class="clickable"
-                gltf-model="#robot-model" 
-                rotation="0 0 0" 
-                position="0 -0.5 0" 
-                scale="0.3 0.3 0.3" 
-                animation-mixer="clip: Dance; loop: repeat"
-                animation-control
-                gesture-handler>
+        <a-entity mindar-image-target="targetIndex: 0" start-show>
+
+            <a-entity position="0 0 0.01">
+                
+                <a-box id="door-left" 
+                    position="-0.25 0 0" 
+                    width="0.5" height="1" depth="0.05"
+                    src="#metal-tex" color="#555"
+                    animation="property: position; to: -0.8 0 0; dur: 2000; easing: easeInOutCubic; startEvents: open">
+                </a-box>
+
+                <a-box id="door-right" 
+                    position="0.25 0 0" 
+                    width="0.5" height="1" depth="0.05"
+                    src="#metal-tex" color="#555"
+                    animation="property: position; to: 0.8 0 0; dur: 2000; easing: easeInOutCubic; startEvents: open">
+                </a-box>
             </a-entity>
 
-            <a-light type="directional" position="1 2 1" intensity="1"></a-light>
-            <a-light type="ambient" intensity="1"></a-light>
+            <a-plane position="0 0 -0.1" width="1.5" height="1.5" color="black"></a-plane>
+
+            <a-entity 
+                id="robot"
+                gltf-model="#robot-model" 
+                rotation="0 0 0" 
+                position="0 -0.5 -2" 
+                scale="0.3 0.3 0.3"
+                animation-mixer="clip: Walking; loop: repeat"
+                animation="property: position; to: 0 -0.5 0.5; dur: 4000; easing: easeOutQuad; startEvents: walk-out">
+            </a-entity>
+
+            <a-light type="point" color="#ffaa00" intensity="2" position="0 0 -0.5"></a-light>
+            <a-light type="ambient" intensity="0.5"></a-light>
 
         </a-entity>
     </a-scene>
