@@ -2,105 +2,135 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Argos AR: Gran Entrada</title>
+    <title>Argos AR: High Fidelity</title>
+    
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
 
     <style>
-        body { margin: 0; }
-        .instructions {
-            position: absolute; bottom: 10%; width: 100%; text-align: center;
-            color: white; font-family: sans-serif; font-weight: bold; pointer-events: none; text-shadow: 2px 2px 2px #000;
+        body { margin: 0; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        
+        /* UI DE CARGA ELEGANTE */
+        #loader-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #111; z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 0.5s;
         }
-        .a-enter-vr-button { display: none; }
+        .loader-text { color: #00ffcc; font-size: 18px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; }
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid #333;
+            border-top: 5px solid #00ffcc; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { opacity: 0; pointer-events: none; }
+
+        /* UI DE ESCANEO */
+        #scan-ui {
+            position: absolute; bottom: 50px; left: 0; width: 100%; text-align: center;
+            pointer-events: none; z-index: 10;
+        }
+        .scan-msg {
+            background: rgba(0, 0, 0, 0.7); color: white; padding: 10px 20px;
+            border: 1px solid #00ffcc; border-radius: 4px; display: inline-block;
+        }
     </style>
 
     <script>
-        // SCRIPT ORQUESTADOR: Coordina que todo pase cuando se detecta la imagen
-        AFRAME.registerComponent('start-show', {
-            init: function () {
-                const el = this.el; // El target
-                const robot = document.querySelector("#robot");
-                const doorL = document.querySelector("#door-left");
-                const doorR = document.querySelector("#door-right");
-                
-                // Cuando encuentra la imagen...
-                el.addEventListener('targetFound', event => {
-                    console.log("Target encontrado - Iniciando secuencia");
-                    
-                    // 1. Disparar apertura de puertas
-                    // 'emit' lanza el evento que las animaciones están esperando (startEvents)
-                    doorL.emit('open');
-                    doorR.emit('open');
+        // COMPONENTE PARA LA ENTRADA DRAMÁTICA
+        AFRAME.registerComponent('dramatic-entry', {
+            init: function() {
+                const el = this.el;
+                el.setAttribute('scale', '0 0 0'); // Empieza invisible/diminuto
+                el.setAttribute('visible', 'false');
 
-                    // 2. Esperar 500ms y hacer que el robot camine hacia afuera
-                    setTimeout(() => {
-                        robot.emit('walk-out');
-                    }, 500);
+                const target = document.querySelector('[mindar-image-target]');
+                
+                target.addEventListener('targetFound', () => {
+                    console.log("¡Objetivo detectado! Iniciando secuencia...");
+                    el.setAttribute('visible', 'true');
+                    
+                    // Animación de escala (Pop-up elástico)
+                    el.removeAttribute('animation'); // Limpiar anteriores
+                    el.setAttribute('animation', {
+                        property: 'scale',
+                        to: '0.4 0.4 0.4', // Tamaño final (ajústalo si es muy grande)
+                        dur: 1500, // Duración en ms
+                        easing: 'easeOutElastic', // Efecto rebote
+                        elasticity: 400
+                    });
                 });
 
-                // Resetear si se pierde (opcional, para que se cierre de nuevo)
-                el.addEventListener('targetLost', event => {
-                    console.log("Target perdido - Reseteando");
-                    // Aquí podrías emitir eventos de 'close' si quisieras
+                target.addEventListener('targetLost', () => {
+                    // Opcional: Ocultarlo de nuevo para que vuelva a salir al re-escanear
+                    el.setAttribute('scale', '0 0 0');
+                    el.setAttribute('visible', 'false');
                 });
             }
         });
     </script>
 </head>
 <body>
-    <div class="instructions">¡Mantén la cámara estable!</div>
+
+    <div id="loader-overlay">
+        <div class="loader-text">Cargando Modelo HD...</div>
+        <div class="spinner"></div>
+    </div>
+
+    <div id="scan-ui" class="hidden">
+        <div class="scan-msg">📡 ENFOCA LA PANTALLA</div>
+    </div>
 
     <a-scene 
-        mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no;" 
+        mindar-image="imageTargetSrc: ./targets.mind; uiLoading: no; uiScanning: no;" 
         color-space="sRGB" 
-        renderer="colorManagement: true, physicallyCorrectLights" 
+        renderer="colorManagement: true, physicallyCorrectLights, highRefreshRate: true" 
         vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false">
 
         <a-assets>
-            <a-asset-item id="robot-model" src="https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/RobotExpressive/RobotExpressive.glb"></a-asset-item>
-            <img id="metal-tex" src="https://cdn.aframe.io/a-painter/images/floor.jpg">
+            <a-asset-item id="brainstem-model" src="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/BrainStem/glTF-Binary/BrainStem.glb"></a-asset-item>
         </a-assets>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity mindar-image-target="targetIndex: 0" start-show>
-
-            <a-entity position="0 0 0.01">
-                
-                <a-box id="door-left" 
-                    position="-0.25 0 0" 
-                    width="0.5" height="1" depth="0.05"
-                    src="#metal-tex" color="#555"
-                    animation="property: position; to: -0.8 0 0; dur: 2000; easing: easeInOutCubic; startEvents: open">
-                </a-box>
-
-                <a-box id="door-right" 
-                    position="0.25 0 0" 
-                    width="0.5" height="1" depth="0.05"
-                    src="#metal-tex" color="#555"
-                    animation="property: position; to: 0.8 0 0; dur: 2000; easing: easeInOutCubic; startEvents: open">
-                </a-box>
-            </a-entity>
-
-            <a-plane position="0 0 -0.1" width="1.5" height="1.5" color="black"></a-plane>
-
-            <a-entity 
-                id="robot"
-                gltf-model="#robot-model" 
+        <a-entity mindar-image-target="targetIndex: 0">
+            
+            <a-light type="directional" position="1 4 2" intensity="1.2" castShadow="true"></a-light>
+            <a-light type="ambient" intensity="0.3"></a-light>
+            <a-light type="point" position="-2 1 2" color="#00ffcc" intensity="0.8"></a-light> <a-entity 
+                id="monster"
+                gltf-model="#brainstem-model" 
                 rotation="0 0 0" 
-                position="0 -0.5 -2" 
-                scale="0.3 0.3 0.3"
-                animation-mixer="clip: Walking; loop: repeat"
-                animation="property: position; to: 0 -0.5 0.5; dur: 4000; easing: easeOutQuad; startEvents: walk-out">
+                position="0 -0.8 0" 
+                dramatic-entry
+                animation-mixer="clip: *; loop: repeat; timeScale: 1">
             </a-entity>
-
-            <a-light type="point" color="#ffaa00" intensity="2" position="0 0 -0.5"></a-light>
-            <a-light type="ambient" intensity="0.5"></a-light>
 
         </a-entity>
     </a-scene>
+
+    <script>
+        // SCRIPT PARA QUITAR LA PANTALLA DE CARGA CUANDO TODO ESTÉ LISTO
+        const scene = document.querySelector('a-scene');
+        const loader = document.querySelector('#loader-overlay');
+        const scanUI = document.querySelector('#scan-ui');
+
+        scene.addEventListener('loaded', () => {
+            console.log("Escena cargada (Assets listos)");
+            // A veces el evento loaded se dispara antes de que MindAR esté listo, damos un pequeño margen
+            setTimeout(() => {
+                loader.classList.add('hidden');
+                scanUI.classList.remove('hidden');
+            }, 1000);
+        });
+
+        // Manejo de errores de cámara
+        scene.addEventListener('arError', (event) => {
+            loader.innerHTML = "<div style='color:red; padding:20px; text-align:center'>ERROR DE CÁMARA<br>Revisa HTTPS y Permisos</div>";
+        });
+    </script>
 </body>
 </html>
