@@ -2,132 +2,138 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Argos AR: High Fidelity Impact</title>
+    <title>Argos AR: Hologram Core</title>
     
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
 
     <style>
-        body { margin: 0; background-color: #111; font-family: sans-serif; }
-        /* UI de carga elegante */
-        #loader {
-            position: absolute; top:0; left:0; width: 100%; height: 100%;
-            background: black; color: #00d2ff; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; z-index: 20;
+        body { margin: 0; background: #000; overflow: hidden; }
+        
+        /* UI SUPERIOR */
+        #hud {
+            position: absolute; top: 20px; left: 20px; z-index: 10;
+            font-family: 'Courier New', Courier, monospace;
+            color: #00ffff; pointer-events: none;
+        }
+        .line { border-left: 2px solid #00ffff; padding-left: 10px; margin-bottom: 5px; opacity: 0; animation: fadeIn 0.5s forwards; }
+        .line:nth-child(2) { animation-delay: 0.2s; }
+        .line:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes fadeIn { to { opacity: 1; } }
+
+        /* MIRA DE ESCANEO */
+        #scanner {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 300px; height: 300px;
+            border: 2px solid rgba(0, 255, 255, 0.3); border-radius: 50%;
+            z-index: 5; pointer-events: none;
+        }
+        #scanner::after {
+            content: ''; position: absolute; top: -5px; left: -5px; right: -5px; bottom: -5px;
+            border: 2px solid transparent; border-top-color: #00ffff; border-bottom-color: #00ffff;
+            border-radius: 50%; animation: spin 4s linear infinite;
         }
         .hidden { display: none !important; }
-        /* UI de escaneo */
-        #scan-overlay {
-            position: absolute; bottom: 30px; width: 100%; text-align: center;
-            color: white; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;
-            pointer-events: none; z-index: 10;
-            text-shadow: 0 0 10px #00d2ff;
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 
     <script>
-        // DIRECTOR DE ESCENA: Controla los tiempos de la animación
-        AFRAME.registerComponent('impact-director', {
+        AFRAME.registerComponent('hologram-logic', {
             init: function () {
-                const el = this.el; // El target
-                const drone = document.querySelector('#attack-drone');
-                const explosion = document.querySelector('#explosion-plane');
-                const warningLight = document.querySelector('#warning-light');
-                const scanUi = document.querySelector('#scan-overlay');
-
-                // Ocultar cargador cuando A-Frame esté listo
-                this.el.sceneEl.addEventListener('loaded', () => {
-                    document.querySelector('#loader').classList.add('hidden');
-                });
+                const el = this.el;
+                const scanner = document.querySelector('#scanner');
+                const hudLines = document.querySelectorAll('.line');
+                const core = document.querySelector('#core-group');
+                
+                // Ocultar el núcleo al inicio
+                core.setAttribute('visible', false);
 
                 el.addEventListener('targetFound', () => {
-                    scanUi.innerHTML = "⚠️ AMENAZA DETECTADA ⚠️";
-                    scanUi.style.color = "red";
+                    scanner.style.borderColor = "#00ff00"; // Verde al encontrar
+                    scanner.classList.add('hidden'); // Quitar mira
                     
-                    // 1. Resetear elementos
-                    explosion.setAttribute('visible', false);
-                    explosion.setAttribute('scale', '0 0 0');
-                    drone.setAttribute('visible', true);
-                    drone.setAttribute('position', '0 0.5 4'); // Empieza lejos
-                    warningLight.setAttribute('intensity', '2');
+                    hudLines[0].innerText = "SYSTEM: ONLINE";
+                    hudLines[1].innerText = "TARGET: VERIFIED";
+                    hudLines[2].innerText = "RENDER: HOLOGRAPHIC";
 
-                    // 2. Lanzar el dron hacia la pantalla
-                    drone.emit('start-attack');
-
-                    // 3. Programar el impacto (Coincide con la duración de la animación del dron: 1000ms)
-                    setTimeout(() => {
-                        // Ocultar dron
-                        drone.setAttribute('visible', false);
-                        // Apagar luz de advertencia
-                        warningLight.setAttribute('intensity', '0.5');
-                        // Disparar explosión visual
-                        explosion.setAttribute('visible', true);
-                        explosion.emit('explode-now');
-                        // Haptic feedback
-                        if(navigator.vibrate) navigator.vibrate([400, 100, 200]);
-                        scanUi.innerHTML = "IMPACTO CONFIRMADO";
-                    }, 1000);
+                    core.setAttribute('visible', true);
+                    
+                    // Animación de entrada "Pop"
+                    core.setAttribute('animation', {
+                        property: 'scale',
+                        from: '0 0 0',
+                        to: '0.5 0.5 0.5', // Ajusta tamaño aquí
+                        dur: 1000,
+                        easing: 'easeOutElastic'
+                    });
                 });
 
                 el.addEventListener('targetLost', () => {
-                    scanUi.innerHTML = "BUSCANDO OBJETIVO...";
-                    scanUi.style.color = "white";
-                    drone.setAttribute('visible', false);
-                    explosion.setAttribute('visible', false);
+                    scanner.classList.remove('hidden');
+                    scanner.style.borderColor = "rgba(0, 255, 255, 0.3)";
+                    hudLines[0].innerText = "SYSTEM: SEARCHING...";
+                    hudLines[1].innerText = "TARGET: ---";
+                    core.setAttribute('visible', false);
+                    core.setAttribute('scale', '0 0 0');
                 });
             }
         });
     </script>
 </head>
 <body>
-    <div id="loader">CARGANDO ASSETS HD...</div>
-    <div id="scan-overlay">BUSCANDO OBJETIVO...</div>
+
+    <div id="hud">
+        <div class="line">SYSTEM: INITIALIZING...</div>
+        <div class="line">TARGET: WAITING</div>
+        <div class="line">RENDER: STANDBY</div>
+    </div>
+
+    <div id="scanner"></div>
 
     <a-scene 
         mindar-image="imageTargetSrc: ./targets.mind; uiLoading: no; uiScanning: no;" 
         color-space="sRGB" 
-        renderer="colorManagement: true, physicallyCorrectLights, highRefreshRate: true" 
+        renderer="colorManagement: true, physicallyCorrectLights, alpha: true" 
         vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false">
 
-        <a-assets>
-            <a-asset-item id="drone-model" src="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/SciFiHelmet/glTF-Binary/SciFiHelmet.glb"></a-asset-item>
-            <img id="explosion-tex" src="https://cdn.aframe.io/images/reallife/explosion.png">
-        </a-assets>
-
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity mindar-image-target="targetIndex: 0" impact-director>
+        <a-entity mindar-image-target="targetIndex: 0" hologram-logic>
             
-            <a-light id="warning-light" type="point" color="#ff0000" position="0 1 2" intensity="0">
-                <a-animation attribute="intensity" from="0" to="3" dur="200" dir="alternate" repeat="indefinite"></a-animation>
-            </a-light>
-            <a-light type="ambient" color="#444"></a-light>
+            <a-entity id="core-group" visible="false">
 
+                <a-icosahedron color="#00ffff" radius="1" opacity="0.8" wireframe="true">
+                    <a-animation attribute="rotation" to="360 360 0" dur="8000" repeat="indefinite" easing="linear"></a-animation>
+                    <a-light type="point" color="#00ffff" intensity="2" distance="5">
+                         <a-animation attribute="intensity" from="1" to="3" dir="alternate" dur="1000" repeat="indefinite"></a-animation>
+                    </a-light>
+                </a-icosahedron>
+                
+                <a-sphere color="white" radius="0.2" opacity="0.9">
+                     <a-animation attribute="scale" from="0.9 0.9 0.9" to="1.1 1.1 1.1" dir="alternate" dur="500" repeat="indefinite"></a-animation>
+                </a-sphere>
 
-            <a-entity 
-                id="attack-drone"
-                gltf-model="#drone-model"
-                scale="0.3 0.3 0.3"
-                position="0 0.5 4"
-                visible="false">
-                <a-animation attribute="rotation" to="0 360 0" repeat="indefinite" dur="3000" easing="linear"></a-animation>
-                <a-animation attribute="position" to="0 0 0" dur="1000" easing="easeInQuad" begin="start-attack"></a-animation>
+                <a-torus color="#0088ff" radius="1.4" radius-tubular="0.02" arc="300" rotation="45 0 0" opacity="0.6">
+                    <a-animation attribute="rotation" to="45 360 0" dur="4000" repeat="indefinite" easing="linear"></a-animation>
+                </a-torus>
+
+                <a-torus color="#00ffff" radius="1.8" radius-tubular="0.01" arc="360" rotation="0 0 45" opacity="0.4">
+                    <a-animation attribute="rotation" to="360 0 45" dur="6000" repeat="indefinite" easing="linear"></a-animation>
+                </a-torus>
+
+                <a-entity rotation="0 0 0">
+                    <a-animation attribute="rotation" to="0 -360 0" dur="5000" repeat="indefinite" easing="linear"></a-animation>
+                    <a-sphere color="#fff" radius="0.05" position="2 0 0"></a-sphere>
+                    <a-sphere color="#fff" radius="0.05" position="-2 0 0"></a-sphere>
+                </a-entity>
+
+                <a-circle rotation="-90 0 0" radius="3" opacity="0.3" color="#00ffff" position="0 -1.5 0" wireframe="true"></a-circle>
+                
+                <a-text value="ARGOS SYSTEM v1.0" color="#00ffff" align="center" position="0 2.2 0" width="6"></a-text>
+
             </a-entity>
-
-
-            <a-image 
-                id="explosion-plane"
-                src="#explosion-tex"
-                position="0 0 0.1" 
-                scale="0 0 0"
-                visible="false"
-                transparent="true"
-                opacity="1">
-                <a-animation attribute="scale" from="0.5 0.5 0.5" to="4 4 4" dur="600" easing="easeOutQuad" begin="explode-now"></a-animation>
-                <a-animation attribute="opacity" from="1" to="0" dur="800" easing="easeInQuad" begin="explode-now"></a-animation>
-            </a-image>
 
         </a-entity>
     </a-scene>
