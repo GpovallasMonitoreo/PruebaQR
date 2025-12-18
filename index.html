@@ -1,142 +1,282 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Argos AR: Hologram Core</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>Argos AR: Tetris</title>
     
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-        body { margin: 0; background: #000; overflow: hidden; }
+        body { margin: 0; font-family: 'Courier New', monospace; overflow: hidden; user-select: none; }
         
-        /* UI SUPERIOR */
-        #hud {
-            position: absolute; top: 20px; left: 20px; z-index: 10;
-            font-family: 'Courier New', Courier, monospace;{
-            color: #00ffff; pointer-events: none;
+        /* UI DE JUEGO (GAMEBOY STYLE) */
+        #game-ui {
+            position: absolute; bottom: 20px; left: 0; width: 100%; height: 150px;
+            pointer-events: none; z-index: 100;
+            display: flex; justify-content: space-around; align-items: center;
         }
-        .line { border-left: 2px solid #00ffff; padding-left: 10px; margin-bottom: 5px; opacity: 0; animation: fadeIn 0.5s forwards; }
-        .line:nth-child(2) { animation-delay: 0.2s; }
-        .line:nth-child(3) { animation-delay: 0.4s; }
-        
-        @keyframes fadeIn { to { opacity: 1; } }
 
-        /* MIRA DE ESCANEO */
-        #scanner {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 300px; height: 300px;
-            border: 2px solid rgba(0, 255, 255, 0.3); border-radius: 50%;
-            z-index: 5; pointer-events: none;
+        .btn {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            border-radius: 50%;
+            width: 70px; height: 70px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 30px; font-weight: bold;
+            backdrop-filter: blur(5px);
+            transition: transform 0.1s;
         }
-        #scanner::after {
-            content: ''; position: absolute; top: -5px; left: -5px; right: -5px; bottom: -5px;
-            border: 2px solid transparent; border-top-color: #00ffff; border-bottom-color: #00ffff;
-            border-radius: 50%; animation: spin 4s linear infinite;
+        .btn:active { transform: scale(0.9); background: rgba(0, 255, 255, 0.4); }
+        
+        #score-board {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #00ffff;
+            color: #00ffff;
+            padding: 10px;
+            font-size: 20px;
+            border-radius: 5px;
+            z-index: 100;
         }
-        .hidden { display: none !important; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 200;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .start-btn {
+            padding: 15px 40px; background: #00ffff; color: black;
+            font-size: 24px; font-weight: bold; border: none; cursor: pointer;
+            margin-top: 20px; border-radius: 5px;
+        }
     </style>
 
     <script>
-        AFRAME.registerComponent('hologram-logic', {
+        // --- MOTOR DE TETRIS ---
+        const COLS = 10;
+        const ROWS = 20;
+        let board = []; // Array lógico 10x20
+        let boxes = []; // Referencias a los objetos A-Frame visuales
+        let score = 0;
+        let gameInterval;
+        let isGameOver = false;
+
+        // Las formas (Tetrominos)
+        const SHAPES = [
+            [[1, 1, 1, 1]], // I
+            [[1, 1], [1, 1]], // O
+            [[0, 1, 0], [1, 1, 1]], // T
+            [[1, 0, 0], [1, 1, 1]], // L
+            [[0, 0, 1], [1, 1, 1]], // J
+            [[0, 1, 1], [1, 1, 0]], // S
+            [[1, 1, 0], [0, 1, 1]]  // Z
+        ];
+        const COLORS = ['cyan', 'yellow', 'purple', 'orange', 'blue', 'green', 'red'];
+
+        let currentPiece = null;
+
+        AFRAME.registerComponent('tetris-manager', {
             init: function () {
-                const el = this.el;
-                const scanner = document.querySelector('#scanner');
-                const hudLines = document.querySelectorAll('.line');
-                const core = document.querySelector('#core-group');
+                const container = this.el;
                 
-                // Ocultar el núcleo al inicio
-                core.setAttribute('visible', false);
+                // 1. INICIALIZAR LA CUADRÍCULA VISUAL (Pooling)
+                // Creamos 200 cajas invisibles
+                for (let y = 0; y < ROWS; y++) {
+                    board[y] = [];
+                    boxes[y] = [];
+                    for (let x = 0; x < COLS; x++) {
+                        board[y][x] = 0; // 0 = vacío
 
-                el.addEventListener('targetFound', () => {
-                    scanner.style.borderColor = "#00ff00"; // Verde al encontrar
-                    scanner.classList.add('hidden'); // Quitar mira
-                    
-                    hudLines[0].innerText = "SYSTEM: ONLINE";
-                    hudLines[1].innerText = "TARGET: VERIFIED";
-                    hudLines[2].innerText = "RENDER: HOLOGRAPHIC";
-
-                    core.setAttribute('visible', true);
-                    
-                    // Animación de entrada "Pop"
-                    core.setAttribute('animation', {
-                        property: 'scale',
-                        from: '0 0 0',
-                        to: '0.5 0.5 0.5', // Ajusta tamaño aquí
-                        dur: 1000,
-                        easing: 'easeOutElastic'
-                    });
-                });
-
-                el.addEventListener('targetLost', () => {
-                    scanner.classList.remove('hidden');
-                    scanner.style.borderColor = "rgba(0, 255, 255, 0.3)";
-                    hudLines[0].innerText = "SYSTEM: SEARCHING...";
-                    hudLines[1].innerText = "TARGET: ---";
-                    core.setAttribute('visible', false);
-                    core.setAttribute('scale', '0 0 0');
-                });
+                        let box = document.createElement('a-box');
+                        // Posicionamiento: Centrado en la base
+                        box.setAttribute('position', `${x - COLS/2 + 0.5} ${y - ROWS/2 + 0.5} 0`);
+                        box.setAttribute('width', '0.9');
+                        box.setAttribute('height', '0.9');
+                        box.setAttribute('depth', '0.9');
+                        box.setAttribute('visible', false); // Oculto por defecto
+                        box.setAttribute('opacity', '0.9');
+                        container.appendChild(box);
+                        boxes[y][x] = box;
+                    }
+                }
+                
+                // Escuchar botones UI
+                window.startGame = () => {
+                    document.getElementById('start-screen').style.display = 'none';
+                    resetGame();
+                    spawnPiece();
+                    gameInterval = setInterval(gameLoop, 500); // Velocidad
+                };
             }
         });
+
+        function resetGame() {
+            score = 0;
+            updateScore();
+            isGameOver = false;
+            // Limpiar tablero lógico
+            for(let y=0; y<ROWS; y++) for(let x=0; x<COLS; x++) board[y][x] = 0;
+            renderBoard();
+        }
+
+        function spawnPiece() {
+            const typeId = Math.floor(Math.random() * SHAPES.length);
+            currentPiece = {
+                shape: SHAPES[typeId],
+                color: COLORS[typeId],
+                x: Math.floor(COLS / 2) - 1,
+                y: ROWS - 1 // Empieza arriba
+            };
+
+            // Game Over check inmediato
+            if (collision(0, 0)) {
+                isGameOver = true;
+                clearInterval(gameInterval);
+                document.getElementById('score-text').innerText = "GAME OVER: " + score;
+                document.getElementById('start-screen').style.display = 'flex';
+            }
+        }
+
+        function collision(offsetX, offsetY, newShape = null) {
+            const shape = newShape || currentPiece.shape;
+            for (let y = 0; y < shape.length; y++) {
+                for (let x = 0; x < shape[y].length; x++) {
+                    if (shape[y][x]) {
+                        let newX = currentPiece.x + x + offsetX;
+                        let newY = currentPiece.y - y + offsetY;
+                        
+                        // Límites y colisión con bloques existentes
+                        if (newX < 0 || newX >= COLS || newY < 0 || (newY < ROWS && board[newY][newX])) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function lockPiece() {
+            for (let y = 0; y < currentPiece.shape.length; y++) {
+                for (let x = 0; x < currentPiece.shape[y].length; x++) {
+                    if (currentPiece.shape[y][x]) {
+                        let py = currentPiece.y - y;
+                        let px = currentPiece.x + x;
+                        if(py >= 0) board[py][px] = currentPiece.color;
+                    }
+                }
+            }
+            // Check líneas
+            for (let y = 0; y < ROWS; y++) {
+                if (board[y].every(cell => cell !== 0)) {
+                    board.splice(y, 1);
+                    board.push(Array(COLS).fill(0)); // Nueva línea vacía arriba
+                    score += 100;
+                    y--; // Re-checkear misma posición
+                }
+            }
+            updateScore();
+        }
+
+        function rotate() {
+            const newShape = currentPiece.shape[0].map((val, index) => currentPiece.shape.map(row => row[index]).reverse());
+            if (!collision(0, 0, newShape)) currentPiece.shape = newShape;
+            renderBoard();
+        }
+
+        function move(dir) {
+            if (!collision(dir, 0)) currentPiece.x += dir;
+            renderBoard();
+        }
+
+        function drop() {
+            if (!collision(0, -1)) {
+                currentPiece.y--;
+            } else {
+                lockPiece();
+                spawnPiece();
+            }
+            renderBoard();
+        }
+
+        function gameLoop() {
+            drop();
+        }
+
+        function renderBoard() {
+            // 1. Apagar todo
+            for(let y=0; y<ROWS; y++) for(let x=0; x<COLS; x++) {
+                if (board[y][x]) {
+                    boxes[y][x].setAttribute('visible', true);
+                    boxes[y][x].setAttribute('color', board[y][x]);
+                } else {
+                    boxes[y][x].setAttribute('visible', false);
+                }
+            }
+            // 2. Dibujar pieza actual (Fantasma)
+            if (currentPiece) {
+                for (let y = 0; y < currentPiece.shape.length; y++) {
+                    for (let x = 0; x < currentPiece.shape[y].length; x++) {
+                        if (currentPiece.shape[y][x]) {
+                            let py = currentPiece.y - y;
+                            let px = currentPiece.x + x;
+                            if (py >= 0 && py < ROWS && px >= 0 && px < COLS) {
+                                boxes[py][px].setAttribute('visible', true);
+                                boxes[py][px].setAttribute('color', currentPiece.color);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateScore() {
+            document.getElementById('score-display').innerText = score;
+        }
+
     </script>
 </head>
 <body>
 
-    <div id="hud">
-        <div class="line">SYSTEM: INITIALIZING...</div>
-        <div class="line">TARGET: WAITING</div>
-        <div class="line">RENDER: STANDBY</div>
+    <div id="start-screen">
+        <h1 style="color: #00ffff; font-size: 40px; text-shadow: 0 0 10px cyan;">AR TETRIS</h1>
+        <div id="score-text" style="color: white;">Toca para jugar</div>
+        <button class="start-btn" onclick="startGame()">▶ START</button>
     </div>
 
-    <div id="scanner"></div>
+    <div id="score-board">SCORE: <span id="score-display">0</span></div>
+    
+    <div id="game-ui">
+        <div class="btn" onclick="move(-1)">⬅</div>
+        <div class="btn" onclick="rotate()">↻</div>
+        <div class="btn" onclick="drop()">⬇</div>
+        <div class="btn" onclick="move(1)">➡</div>
+    </div>
 
     <a-scene 
         mindar-image="imageTargetSrc: ./targets.mind; uiLoading: no; uiScanning: no;" 
         color-space="sRGB" 
-        renderer="colorManagement: true, physicallyCorrectLights, alpha: true" 
+        renderer="colorManagement: true, physicallyCorrectLights" 
         vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false">
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity mindar-image-target="targetIndex: 0" hologram-logic>
+        <a-entity mindar-image-target="targetIndex: 0">
             
-            <a-entity id="core-group" visible="false">
-
-                <a-icosahedron color="#00ffff" radius="1" opacity="0.8" wireframe="true">
-                    <a-animation attribute="rotation" to="360 360 0" dur="8000" repeat="indefinite" easing="linear"></a-animation>
-                    <a-light type="point" color="#00ffff" intensity="2" distance="5">
-                         <a-animation attribute="intensity" from="1" to="3" dir="alternate" dur="1000" repeat="indefinite"></a-animation>
-                    </a-light>
-                </a-icosahedron>
-                
-                <a-sphere color="white" radius="0.2" opacity="0.9">
-                     <a-animation attribute="scale" from="0.9 0.9 0.9" to="1.1 1.1 1.1" dir="alternate" dur="500" repeat="indefinite"></a-animation>
-                </a-sphere>
-
-                <a-torus color="#0088ff" radius="1.4" radius-tubular="0.02" arc="300" rotation="45 0 0" opacity="0.6">
-                    <a-animation attribute="rotation" to="45 360 0" dur="4000" repeat="indefinite" easing="linear"></a-animation>
-                </a-torus>
-
-                <a-torus color="#00ffff" radius="1.8" radius-tubular="0.01" arc="360" rotation="0 0 45" opacity="0.4">
-                    <a-animation attribute="rotation" to="360 0 45" dur="6000" repeat="indefinite" easing="linear"></a-animation>
-                </a-torus>
-
-                <a-entity rotation="0 0 0">
-                    <a-animation attribute="rotation" to="0 -360 0" dur="5000" repeat="indefinite" easing="linear"></a-animation>
-                    <a-sphere color="#fff" radius="0.05" position="2 0 0"></a-sphere>
-                    <a-sphere color="#fff" radius="0.05" position="-2 0 0"></a-sphere>
-                </a-entity>
-
-                <a-circle rotation="-90 0 0" radius="3" opacity="0.3" color="#00ffff" position="0 -1.5 0" wireframe="true"></a-circle>
-                
-                <a-text value="ARGOS SYSTEM v1.0" color="#00ffff" align="center" position="0 2.2 0" width="6"></a-text>
-
+            <a-entity id="tetris-container" scale="0.05 0.05 0.05" position="0 -0.5 0" tetris-manager>
+                <a-box position="0 0 -0.6" width="10.5" height="20.5" depth="0.1" color="#111"></a-box>
+                <a-box position="-5.5 0 0" width="0.5" height="20.5" depth="1" color="#333"></a-box>
+                <a-box position="5.5 0 0" width="0.5" height="20.5" depth="1" color="#333"></a-box>
+                <a-box position="0 -10.25 0" width="11.5" height="0.5" depth="1" color="#333"></a-box>
             </a-entity>
+
+            <a-light type="directional" position="0 5 10" intensity="1"></a-light>
+            <a-light type="ambient" intensity="0.5"></a-light>
 
         </a-entity>
     </a-scene>
 </body>
 </html>
-
