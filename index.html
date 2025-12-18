@@ -2,139 +2,132 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Argos AR: Desastre Nativo</title>
+    <title>Argos AR: High Fidelity Impact</title>
     
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
 
     <style>
-        body { margin: 0; }
-        /* Forzamos que el video tenga prioridad visual si algo falla en el 3D */
-        video { z-index: -1 !important; } 
-        
-        #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        body { margin: 0; background-color: #111; font-family: sans-serif; }
+        /* UI de carga elegante */
+        #loader {
+            position: absolute; top:0; left:0; width: 100%; height: 100%;
+            background: black; color: #00d2ff; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 20;
+        }
+        .hidden { display: none !important; }
+        /* UI de escaneo */
+        #scan-overlay {
+            position: absolute; bottom: 30px; width: 100%; text-align: center;
+            color: white; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;
             pointer-events: none; z-index: 10;
-            display: flex; justify-content: center; align-items: center;
+            text-shadow: 0 0 10px #00d2ff;
         }
-        .warning {
-            color: red; font-family: 'Arial Black', sans-serif; font-size: 2rem;
-            text-transform: uppercase; text-shadow: 0 0 10px yellow;
-            animation: blink 0.5s infinite; display: none;
-        }
-        @keyframes blink { 50% { opacity: 0; } }
     </style>
 
     <script>
-        // COMPONENTE: GENERADOR DE EXPLOSIÓN PROPIA
-        AFRAME.registerComponent('collision-handler', {
+        // DIRECTOR DE ESCENA: Controla los tiempos de la animación
+        AFRAME.registerComponent('impact-director', {
             init: function () {
-                const el = this.el;
-                const meteor = document.querySelector('#meteor');
-                const warning = document.querySelector('.warning');
-                
-                // Crear 20 fragmentos de escombros ocultos
-                this.fragments = [];
-                for(let i=0; i<30; i++) {
-                    let fragment = document.createElement('a-dodecahedron');
-                    fragment.setAttribute('color', i % 2 === 0 ? '#ffaa00' : '#555'); // Naranja y Gris
-                    fragment.setAttribute('radius', Math.random() * 0.1 + 0.05);
-                    fragment.setAttribute('visible', false);
-                    el.appendChild(fragment);
-                    this.fragments.push(fragment);
-                }
+                const el = this.el; // El target
+                const drone = document.querySelector('#attack-drone');
+                const explosion = document.querySelector('#explosion-plane');
+                const warningLight = document.querySelector('#warning-light');
+                const scanUi = document.querySelector('#scan-overlay');
+
+                // Ocultar cargador cuando A-Frame esté listo
+                this.el.sceneEl.addEventListener('loaded', () => {
+                    document.querySelector('#loader').classList.add('hidden');
+                });
 
                 el.addEventListener('targetFound', () => {
-                    console.log("Objetivo encontrado. Iniciando secuencia.");
-                    warning.style.display = 'block';
-
-                    // 1. Resetear Meteoro
-                    meteor.setAttribute('visible', true);
-                    meteor.setAttribute('position', '0 2 2'); // Arriba y afuera
+                    scanUi.innerHTML = "⚠️ AMENAZA DETECTADA ⚠️";
+                    scanUi.style.color = "red";
                     
-                    // 2. Animar Caída
-                    meteor.removeAttribute('animation');
-                    meteor.setAttribute('animation', {
-                        property: 'position',
-                        to: '0 0 0',
-                        dur: 800,
-                        easing: 'easeInCubic'
-                    });
+                    // 1. Resetear elementos
+                    explosion.setAttribute('visible', false);
+                    explosion.setAttribute('scale', '0 0 0');
+                    drone.setAttribute('visible', true);
+                    drone.setAttribute('position', '0 0.5 4'); // Empieza lejos
+                    warningLight.setAttribute('intensity', '2');
 
-                    // 3. Impacto (después de 800ms)
+                    // 2. Lanzar el dron hacia la pantalla
+                    drone.emit('start-attack');
+
+                    // 3. Programar el impacto (Coincide con la duración de la animación del dron: 1000ms)
                     setTimeout(() => {
-                        this.explode();
-                        meteor.setAttribute('visible', false); // Ocultar meteoro
-                        warning.style.display = 'none'; // Quitar alerta
-                        // Vibrar
-                        if(navigator.vibrate) navigator.vibrate(500);
-                    }, 800);
+                        // Ocultar dron
+                        drone.setAttribute('visible', false);
+                        // Apagar luz de advertencia
+                        warningLight.setAttribute('intensity', '0.5');
+                        // Disparar explosión visual
+                        explosion.setAttribute('visible', true);
+                        explosion.emit('explode-now');
+                        // Haptic feedback
+                        if(navigator.vibrate) navigator.vibrate([400, 100, 200]);
+                        scanUi.innerHTML = "IMPACTO CONFIRMADO";
+                    }, 1000);
                 });
 
                 el.addEventListener('targetLost', () => {
-                    warning.style.display = 'none';
-                    meteor.setAttribute('visible', false);
-                });
-            },
-
-            explode: function() {
-                // Disparar los fragmentos en direcciones aleatorias
-                this.fragments.forEach(frag => {
-                    frag.setAttribute('position', '0 0 0');
-                    frag.setAttribute('visible', true);
-                    
-                    // Calcular dirección aleatoria explosiva
-                    const x = (Math.random() - 0.5) * 4;
-                    const y = (Math.random() - 0.5) * 4;
-                    const z = (Math.random() - 0.5) * 4; // Hacia afuera
-
-                    frag.setAttribute('animation', {
-                        property: 'position',
-                        to: `${x} ${y} ${z}`,
-                        dur: 1000,
-                        easing: 'easeOutQuad'
-                    });
-                    
-                    // Desaparecer (scale a 0)
-                    frag.setAttribute('animation__scale', {
-                        property: 'scale',
-                        to: '0 0 0',
-                        dur: 1000,
-                        easing: 'easeOutQuad'
-                    });
+                    scanUi.innerHTML = "BUSCANDO OBJETIVO...";
+                    scanUi.style.color = "white";
+                    drone.setAttribute('visible', false);
+                    explosion.setAttribute('visible', false);
                 });
             }
         });
     </script>
 </head>
 <body>
-
-    <div id="ui-layer">
-        <div class="warning">⚠️ IMPACTO ⚠️</div>
-    </div>
+    <div id="loader">CARGANDO ASSETS HD...</div>
+    <div id="scan-overlay">BUSCANDO OBJETIVO...</div>
 
     <a-scene 
         mindar-image="imageTargetSrc: ./targets.mind; uiLoading: no; uiScanning: no;" 
         color-space="sRGB" 
-        renderer="colorManagement: true, physicallyCorrectLights" 
+        renderer="colorManagement: true, physicallyCorrectLights, highRefreshRate: true" 
         vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false">
 
+        <a-assets>
+            <a-asset-item id="drone-model" src="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/SciFiHelmet/glTF-Binary/SciFiHelmet.glb"></a-asset-item>
+            <img id="explosion-tex" src="https://cdn.aframe.io/images/reallife/explosion.png">
+        </a-assets>
+
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity mindar-image-target="targetIndex: 0" collision-handler>
+        <a-entity mindar-image-target="targetIndex: 0" impact-director>
             
-            <a-dodecahedron id="meteor" 
-                radius="0.5" 
-                color="#444" 
-                roughness="1"
-                visible="false"
-                position="0 2 2">
-                <a-sphere color="orange" radius="0.55" opacity="0.5" animation="property: scale; to: 1.2 1.2 1.2; dir: alternate; loop: true; dur: 100"></a-sphere>
-            </a-dodecahedron>
+            <a-light id="warning-light" type="point" color="#ff0000" position="0 1 2" intensity="0">
+                <a-animation attribute="intensity" from="0" to="3" dur="200" dir="alternate" repeat="indefinite"></a-animation>
+            </a-light>
+            <a-light type="ambient" color="#444"></a-light>
 
-            <a-light type="point" color="orange" position="0 0 2" intensity="2"></a-light>
-            <a-light type="ambient" intensity="0.5"></a-light>
+
+            <a-entity 
+                id="attack-drone"
+                gltf-model="#drone-model"
+                scale="0.3 0.3 0.3"
+                position="0 0.5 4"
+                visible="false">
+                <a-animation attribute="rotation" to="0 360 0" repeat="indefinite" dur="3000" easing="linear"></a-animation>
+                <a-animation attribute="position" to="0 0 0" dur="1000" easing="easeInQuad" begin="start-attack"></a-animation>
+            </a-entity>
+
+
+            <a-image 
+                id="explosion-plane"
+                src="#explosion-tex"
+                position="0 0 0.1" 
+                scale="0 0 0"
+                visible="false"
+                transparent="true"
+                opacity="1">
+                <a-animation attribute="scale" from="0.5 0.5 0.5" to="4 4 4" dur="600" easing="easeOutQuad" begin="explode-now"></a-animation>
+                <a-animation attribute="opacity" from="1" to="0" dur="800" easing="easeInQuad" begin="explode-now"></a-animation>
+            </a-image>
 
         </a-entity>
     </a-scene>
