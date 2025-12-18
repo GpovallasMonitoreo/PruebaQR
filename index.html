@@ -2,130 +2,139 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Argos AR: Disaster</title>
+    <title>Argos AR: Desastre Nativo</title>
     
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
-    <script src="https://unpkg.com/aframe-particle-system-component@1.0.x/dist/aframe-particle-system-component.min.js"></script>
 
     <style>
-        body { margin: 0; background: #000; }
-        #overlay {
+        body { margin: 0; }
+        /* Forzamos que el video tenga prioridad visual si algo falla en el 3D */
+        video { z-index: -1 !important; } 
+        
+        #ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; justify-content: center; align-items: center;
-            color: red; font-family: Impact, sans-serif; font-size: 2em;
             pointer-events: none; z-index: 10;
-            text-shadow: 2px 2px 0px #000;
+            display: flex; justify-content: center; align-items: center;
         }
-        .hidden { display: none !important; }
+        .warning {
+            color: red; font-family: 'Arial Black', sans-serif; font-size: 2rem;
+            text-transform: uppercase; text-shadow: 0 0 10px yellow;
+            animation: blink 0.5s infinite; display: none;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
     </style>
 
     <script>
-        AFRAME.registerComponent('disaster-manager', {
+        // COMPONENTE: GENERADOR DE EXPLOSIÓN PROPIA
+        AFRAME.registerComponent('collision-handler', {
             init: function () {
                 const el = this.el;
                 const meteor = document.querySelector('#meteor');
-                const explosion = document.querySelector('#explosion-particles');
-                const fire = document.querySelector('#fire-particles');
-                const sound = document.querySelector('#sfx-explosion');
-                const smoke = document.querySelector('#smoke-particles');
-
-                // Ocultar efectos al inicio
-                explosion.setAttribute('visible', false);
-                fire.setAttribute('visible', false);
-                smoke.setAttribute('visible', false);
+                const warning = document.querySelector('.warning');
+                
+                // Crear 20 fragmentos de escombros ocultos
+                this.fragments = [];
+                for(let i=0; i<30; i++) {
+                    let fragment = document.createElement('a-dodecahedron');
+                    fragment.setAttribute('color', i % 2 === 0 ? '#ffaa00' : '#555'); // Naranja y Gris
+                    fragment.setAttribute('radius', Math.random() * 0.1 + 0.05);
+                    fragment.setAttribute('visible', false);
+                    el.appendChild(fragment);
+                    this.fragments.push(fragment);
+                }
 
                 el.addEventListener('targetFound', () => {
-                    console.log("¡IMPACTO INMINENTE!");
+                    console.log("Objetivo encontrado. Iniciando secuencia.");
+                    warning.style.display = 'block';
+
+                    // 1. Resetear Meteoro
+                    meteor.setAttribute('visible', true);
+                    meteor.setAttribute('position', '0 2 2'); // Arriba y afuera
                     
-                    // 1. El meteorito cae rápido
+                    // 2. Animar Caída
+                    meteor.removeAttribute('animation');
                     meteor.setAttribute('animation', {
                         property: 'position',
-                        from: '0 0 4', // Empieza lejos (fuera de pantalla)
-                        to: '0 0 0',   // Golpea la pantalla
-                        dur: 600,      // Muy rápido (0.6 seg)
-                        easing: 'easeInQuad'
+                        to: '0 0 0',
+                        dur: 800,
+                        easing: 'easeInCubic'
                     });
 
-                    // 2. Al momento del impacto (600ms después)
+                    // 3. Impacto (después de 800ms)
                     setTimeout(() => {
-                        // Ocultamos el meteoro (ya "entró" en la pared)
-                        meteor.setAttribute('visible', false);
-
-                        // SONIDO
-                        sound.components.sound.playSound();
-
-                        // EXPLOSIÓN VISUAL
-                        explosion.setAttribute('visible', true);
-                        fire.setAttribute('visible', true);
-                        smoke.setAttribute('visible', true);
-
-                        // Vibración del celular (Haptic Feedback)
-                        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
-
-                    }, 600);
+                        this.explode();
+                        meteor.setAttribute('visible', false); // Ocultar meteoro
+                        warning.style.display = 'none'; // Quitar alerta
+                        // Vibrar
+                        if(navigator.vibrate) navigator.vibrate(500);
+                    }, 800);
                 });
 
                 el.addEventListener('targetLost', () => {
-                    // Resetear todo para la próxima vez
-                    meteor.setAttribute('visible', true);
-                    meteor.removeAttribute('animation');
-                    meteor.setAttribute('position', '0 0 4');
-                    explosion.setAttribute('visible', false);
-                    fire.setAttribute('visible', false);
-                    smoke.setAttribute('visible', false);
-                    sound.components.sound.stopSound();
+                    warning.style.display = 'none';
+                    meteor.setAttribute('visible', false);
+                });
+            },
+
+            explode: function() {
+                // Disparar los fragmentos en direcciones aleatorias
+                this.fragments.forEach(frag => {
+                    frag.setAttribute('position', '0 0 0');
+                    frag.setAttribute('visible', true);
+                    
+                    // Calcular dirección aleatoria explosiva
+                    const x = (Math.random() - 0.5) * 4;
+                    const y = (Math.random() - 0.5) * 4;
+                    const z = (Math.random() - 0.5) * 4; // Hacia afuera
+
+                    frag.setAttribute('animation', {
+                        property: 'position',
+                        to: `${x} ${y} ${z}`,
+                        dur: 1000,
+                        easing: 'easeOutQuad'
+                    });
+                    
+                    // Desaparecer (scale a 0)
+                    frag.setAttribute('animation__scale', {
+                        property: 'scale',
+                        to: '0 0 0',
+                        dur: 1000,
+                        easing: 'easeOutQuad'
+                    });
                 });
             }
         });
     </script>
 </head>
 <body>
-    <div id="overlay">⚠️ PELIGRO SÍSMICO</div>
+
+    <div id="ui-layer">
+        <div class="warning">⚠️ IMPACTO ⚠️</div>
+    </div>
 
     <a-scene 
-        mindar-image="imageTargetSrc: ./targets.mind;" 
+        mindar-image="imageTargetSrc: ./targets.mind; uiLoading: no; uiScanning: no;" 
         color-space="sRGB" 
         renderer="colorManagement: true, physicallyCorrectLights" 
         vr-mode-ui="enabled: false" 
         device-orientation-permission-ui="enabled: false">
 
-        <a-assets>
-            <a-asset-item id="rock-model" src="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Asteroid/glTF/Asteroid.gltf"></a-asset-item>
-            <audio id="explosion-sound" src="https://cdn.freesound.org/previews/156/156031_2703579-lq.mp3" preload="auto"></audio>
-        </a-assets>
-
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-        <a-entity mindar-image-target="targetIndex: 0" disaster-manager>
-
-            <a-entity 
-                id="meteor"
-                gltf-model="#rock-model"
-                scale="0.05 0.05 0.05"
-                rotation="0 0 0"
-                position="0 0 4"> <a-animation attribute="rotation" to="360 360 0" repeat="indefinite" dur="2000"></a-animation>
-            </a-entity>
-
+        <a-entity mindar-image-target="targetIndex: 0" collision-handler>
             
+            <a-dodecahedron id="meteor" 
+                radius="0.5" 
+                color="#444" 
+                roughness="1"
+                visible="false"
+                position="0 2 2">
+                <a-sphere color="orange" radius="0.55" opacity="0.5" animation="property: scale; to: 1.2 1.2 1.2; dir: alternate; loop: true; dur: 100"></a-sphere>
+            </a-dodecahedron>
 
-            <a-entity id="fire-particles" position="0 0 0"
-                particle-system="preset: dust; texture: https://cdn.aframe.io/fire/fire.png; color: #ff4400,#ff8800; particleCount: 1000; size: 2; velocityValue: 0 1 0; velocitySpread: 0.5 0.5 0.5; maxAge: 1;">
-            </a-entity>
-
-            <a-entity id="smoke-particles" position="0 0 0"
-                particle-system="preset: dust; color: #000000,#333333; particleCount: 500; size: 4; velocityValue: 0 0.5 0; opacity: 0.5;">
-            </a-entity>
-
-            <a-entity id="explosion-particles" position="0 0 0"
-                particle-system="preset: explosion; color: #ffff00; particleCount: 200; texture: https://cdn.aframe.io/fire/fire.png;">
-            </a-entity>
-
-            <a-entity id="sfx-explosion" sound="src: #explosion-sound; volume: 4; positional: false"></a-entity>
-
-            <a-light type="point" color="#ffaa00" distance="5" decay="2" intensity="2">
-                <a-animation attribute="intensity" from="2" to="0.5" dur="100" repeat="indefinite" easing="linear"></a-animation>
-            </a-light>
+            <a-light type="point" color="orange" position="0 0 2" intensity="2"></a-light>
+            <a-light type="ambient" intensity="0.5"></a-light>
 
         </a-entity>
     </a-scene>
